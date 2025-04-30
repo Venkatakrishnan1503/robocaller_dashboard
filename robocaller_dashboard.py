@@ -2,11 +2,12 @@ import streamlit as st
 import pandas as pd
 import networkx as nx
 import matplotlib.pyplot as plt
+import seaborn as sns
 from PIL import Image
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix, accuracy_score
-import seaborn as sns
+
 
 st.set_page_config(page_title="Robocaller Detection Dashboard", layout="wide")
 
@@ -41,7 +42,7 @@ elif page == "📁 Upload CSV":
         st.success("✅ File uploaded successfully!")
         st.dataframe(st.session_state['df'].head())
     elif page == "📊 Analyze Robocallers":
-    if 'df' not in st.session_state:
+     if 'df' not in st.session_state:
         st.warning("⚠️ Please upload a call_logs.csv file first from 'Upload CSV' page.")
     else:
         df = st.session_state['df']
@@ -155,4 +156,4 @@ elif page == "📁 Upload CSV":
         y = df_user_stats['is_robocaller']
 
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
-        model = RandomForestClassifier(n_estima_
+        model = RandomForestClassifier(n_estima_)
