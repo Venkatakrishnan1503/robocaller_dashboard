@@ -42,10 +42,14 @@ elif page == "📁 Upload CSV":
         st.success("✅ File uploaded successfully!")
         st.dataframe(st.session_state['df'].head())
     elif page == "📊 Analyze Robocallers":
-     if 'df' not in st.session_state:
+     df = st.session_state.get('df')
+    if df is None:
         st.warning("⚠️ Please upload a call_logs.csv file first from 'Upload CSV' page.")
+        st.stop()
+
     else:
-        df = st.session_state['df']
+        df = st.session_state.get('df')
+
 
         required_cols = {'caller_id', 'receiver_id', 'call_duration_sec'}
         if not required_cols.issubset(df.columns):
