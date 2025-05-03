@@ -1,176 +1,86 @@
 import streamlit as st
 import pandas as pd
-import networkx as nx
 import matplotlib.pyplot as plt
-from PIL import Image
+import seaborn as sns
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import confusion_matrix, accuracy_score
-import seaborn as sns
+from sklearn.metrics import classification_report, confusion_matrix
 
+# Set page config
 st.set_page_config(page_title="Robocaller Detection Dashboard", layout="wide")
 
-# Load logo if available
-try:
-    logo = Image.open('logo.png')
-    st.image(logo, width=150)
-except:
-    pass
-
-st.title("📞 Robocaller Detection App")
-
+# Navigation
 st.sidebar.title("📁 Navigation")
-page = st.sidebar.radio("Go to:", ["🏠 Home", "📁 Upload CSV", "📊 Analyze Robocallers"])
+page = st.sidebar.radio("Go to:", ["🏠 Home", "📤 Upload CSV", "📊 Analyze Robocallers"])
 
-# --- HOME PAGE ---
+st.title("📞 Robocaller Detection Dashboard")
+
+# Session state to store data
+if 'df' not in st.session_state:
+    st.session_state['df'] = None
+
+# Home Page
 if page == "🏠 Home":
-    st.header("Welcome to Robocaller Detection Dashboard!")
-    st.markdown("""
-    🚀 **Detect robocallers easily.**  
-    📈 **Analyze call patterns.**  
-    📊 **Visualize user engagement.**  
-    📥 **Download robocaller reports.**  
+    st.markdown("Welcome to the Robocaller Detection Dashboard!")
+    st.markdown("Use the sidebar to upload a CSV file and analyze robocall behavior.")
 
-    👉 Use the sidebar to navigate between different sections!
-    """, unsafe_allow_html=True)
-
-# --- UPLOAD CSV PAGE ---
-elif page == "📁 Upload CSV":
-    st.header("📁 Upload your call logs CSV file")
-    uploaded_file = st.file_uploader("Upload call_logs.csv", type=["csv"])
-
+# Upload Page
+elif page == "📤 Upload CSV":
+    uploaded_file = st.file_uploader("Upload Call Logs CSV", type=["csv"])
     if uploaded_file:
         st.session_state['df'] = pd.read_csv(uploaded_file)
         st.success("✅ File uploaded successfully!")
         st.dataframe(st.session_state['df'].head())
 
-# --- ANALYZE ROBOCALLERS PAGE ---
+# Analyze Page
 elif page == "📊 Analyze Robocallers":
-    df = st.session_state.get('df')
+    df = st.session_state['df']
 
     if df is None:
-        st.warning("⚠️ Please upload a call_logs.csv file first from 'Upload CSV' page.")
-        st.stop()
-
-    required_cols = {'caller_id', 'receiver_id', 'call_duration_sec'}
-    if not required_cols.issubset(df.columns):
-        st.error(f"❌ Invalid CSV format! Required columns: {required_cols}")
-        st.stop()
-
-    # Build call graph
-    G = nx.DiGraph()
-    for _, row in df.iterrows():
-        caller = row['caller_id']
-        receiver = row['receiver_id']
-        duration = row['call_duration_sec']
-        if G.has_edge(caller, receiver):
-            G[caller][receiver]['count'] += 1
-            G[caller][receiver]['total_duration'] += duration
-        else:
-            G.add_edge(caller, receiver, count=1, total_duration=duration)
-
-    # User statistics
-    user_stats = {}
-    for node in G.nodes:
-        edges = G.out_edges(node, data=True)
-        total_calls = sum([data['count'] for _, _, data in edges])
-        total_duration = sum([data['total_duration'] for _, _, data in edges])
-        avg_duration = total_duration / total_calls if total_calls > 0 else 0
-        user_stats[node] = {
-            'outgoing_calls': total_calls,
-            'avg_call_duration': avg_duration
-        }
-
-    df_user_stats = pd.DataFrame.from_dict(user_stats, orient='index')
-
-    st.header("📈 User Call Statistics")
-    st.dataframe(df_user_stats)
-
-    # Bar chart of top 10 callers
-    st.subheader("📊 Top 10 Callers by Outgoing Calls")
-    top_callers = df_user_stats.sort_values('outgoing_calls', ascending=False).head(10)
-    fig, ax = plt.subplots(figsize=(8, 5))
-    top_callers['outgoing_calls'].plot(kind='barh', color='skyblue', ax=ax)
-    ax.set_xlabel('Number of Outgoing Calls')
-    ax.set_ylabel('User ID')
-    ax.set_title('Top 10 Outgoing Callers')
-    plt.gca().invert_yaxis()
-    st.pyplot(fig)
-
-    # Pie chart of call duration
-    st.subheader("🥧 Call Duration Categories (Pie Chart)")
-    df['duration_category'] = pd.cut(
-        df['call_duration_sec'],
-        bins=[0, 20, 60, 300, float('inf')],
-        labels=['Very Short', 'Short', 'Medium', 'Long']
-    )
-    duration_counts = df['duration_category'].value_counts()
-    fig2, ax2 = plt.subplots()
-    ax2.pie(duration_counts, labels=duration_counts.index, autopct='%1.1f%%', startangle=90,
-            colors=['#ff9999', '#66b3ff', '#99ff99', '#ffcc99'])
-    ax2.axis('equal')
-    st.pyplot(fig2)
-
-    # Network graph
-    st.subheader("🌐 Call Network Graph (Sampled)")
-    sampled_edges = list(G.edges(data=True))[:100]
-    G_sample = nx.DiGraph()
-    G_sample.add_edges_from([(u, v) for u, v, _ in sampled_edges])
-    fig3, ax3 = plt.subplots(figsize=(10, 8))
-    pos = nx.spring_layout(G_sample, k=0.5)
-    nx.draw(G_sample, pos, with_labels=True, node_color='lightblue',
-            edge_color='gray', node_size=500, font_size=8, arrows=True)
-    st.pyplot(fig3)
-
-    # Threshold-based detection
-    st.header("🚨 Robocaller Detection Settings")
-    st.sidebar.header("🎛️ Detection Thresholds")
-    CALL_THRESHOLD = st.sidebar.slider("Minimum outgoing calls", 10, 500, 100, step=10)
-    DURATION_THRESHOLD = st.sidebar.slider("Maximum average call duration (seconds)", 5, 60, 20)
-
-    robocallers = df_user_stats[
-        (df_user_stats['outgoing_calls'] > CALL_THRESHOLD) &
-        (df_user_stats['avg_call_duration'] < DURATION_THRESHOLD)
-    ]
-
-    st.subheader("🚨 Detected Robocallers")
-    if not robocallers.empty:
-        st.success(f"✅ Found {len(robocallers)} potential robocaller(s).")
-        st.dataframe(robocallers)
-
-        csv = robocallers.to_csv().encode('utf-8')
-        st.download_button(
-            label="⬇️ Download Robocallers CSV",
-            data=csv,
-            file_name='detected_robocallers.csv',
-            mime='text/csv'
-        )
+        st.warning("⚠️ Please upload a CSV file first.")
     else:
-        st.info("No robocallers detected with the current thresholds.")
+        st.subheader("Call Statistics per Caller")
 
-    # Machine Learning-based detection
-    st.header("🤖 Machine Learning Based Detection")
+        # Aggregate call stats
+        df_user_stats = df.groupby('caller_id').agg(
+            outgoing_calls=('receiver_id', 'count'),
+            avg_call_duration=('call_duration_sec', 'mean')
+        ).reset_index()
 
-    df_user_stats['is_robocaller'] = (
-        (df_user_stats['outgoing_calls'] > 100) &
-        (df_user_stats['avg_call_duration'] < 20)
-    ).astype(int)
+        # Improved robocaller detection threshold
+        df_user_stats['is_robocaller'] = (
+            (df_user_stats['outgoing_calls'] > 50) &
+            (df_user_stats['avg_call_duration'] < 15)
+        ).astype(int)
 
-    X = df_user_stats[['outgoing_calls', 'avg_call_duration']]
-    y = df_user_stats['is_robocaller']
+        st.write(df_user_stats.head())
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
-    model = RandomForestClassifier(n_estimators=100, random_state=42)
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
+        st.subheader("📊 Robocaller Summary")
+        st.bar_chart(df_user_stats['is_robocaller'].value_counts())
 
-    st.subheader("📉 Confusion Matrix")
-    cm = confusion_matrix(y_test, y_pred)
-    fig_cm, ax_cm = plt.subplots()
-    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", ax=ax_cm)
-    ax_cm.set_xlabel('Predicted')
-    ax_cm.set_ylabel('Actual')
-    st.pyplot(fig_cm)
+        st.subheader("📉 Machine Learning Classification")
 
-    accuracy = accuracy_score(y_test, y_pred)
-    st.success(f"✅ Model Accuracy: {accuracy * 100:.2f}%")
+        # Prepare features and labels
+        X = df_user_stats[['outgoing_calls', 'avg_call_duration']]
+        y = df_user_stats['is_robocaller']
+
+        # Avoid error when only one class present
+        if len(y.unique()) < 2:
+            st.error("❌ Not enough class variety (no robocallers detected). Please upload a better dataset.")
+        else:
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+            model = RandomForestClassifier(n_estimators=100, random_state=42)
+            model.fit(X_train, y_train)
+            y_pred = model.predict(X_test)
+
+            # Confusion matrix
+            cm = confusion_matrix(y_test, y_pred)
+            fig, ax = plt.subplots()
+            sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax)
+            ax.set_xlabel("Predicted")
+            ax.set_ylabel("Actual")
+            st.pyplot(fig)
+
+            st.text("Classification Report:")
+            st.code(classification_report(y_test, y_pred))
+
